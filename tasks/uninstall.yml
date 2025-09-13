@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: 2023 Slavi Pantaleev
+# SPDX-FileCopyrightText: 2025 Suguru Hirahara
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+---
+- name: Check existence of OpenCloud systemd service
+  ansible.builtin.stat:
+    path: "{{ devture_systemd_docker_base_systemd_path }}/{{ opencloud_identifier }}.service"
+  register: opencloud_service_stat
+
+- name: Uninstall OpenCloud systemd services and files
+  when: opencloud_service_stat.stat.exists | bool
+  block:
+    - name: Ensure OpenCloud systemd service is stopped
+      ansible.builtin.service:
+        name: "{{ opencloud_identifier }}"
+        state: stopped
+        enabled: false
+        daemon_reload: true
+
+    - name: Ensure OpenCloud systemd service does not exist
+      ansible.builtin.file:
+        path: "{{ devture_systemd_docker_base_systemd_path }}/{{ opencloud_identifier }}.service"
+        state: absent
+
+    - name: Ensure OpenCloud container network does not exist via community.docker.docker_network
+      when: devture_systemd_docker_base_container_network_creation_method == 'ansible-module'
+      community.docker.docker_network:
+        name: "{{ opencloud_container_network }}"
+        state: absent
+
+    - name: Ensure OpenCloud container network does not exist via ansible.builtin.command
+      when: devture_systemd_docker_base_container_network_creation_method == 'command'
+      ansible.builtin.command:
+        cmd: >-
+          {{ devture_systemd_docker_base_host_command_docker }} network rm
+          {{ opencloud_container_network }}
+      register: network_deletion_result
+      changed_when: opencloud_container_network in network_deletion_result.stdout
+
+    - name: Ensure OpenCloud path does not exist
+      ansible.builtin.file:
+        path: "{{ opencloud_base_path }}"
+        state: absent
